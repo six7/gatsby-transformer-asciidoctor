@@ -2,6 +2,7 @@
 const _ = require('lodash/fp')
 const path = require('path')
 const crypto = require(`crypto`)
+const isRelative = require('is-relative-url')
 const booleanBind = Boolean.bind
 const asciidoctor = require('asciidoctor.js')()
 Boolean.bind = booleanBind
@@ -17,31 +18,20 @@ module.exports.onCreateNode = function(
   }
 
   return loadNodeContent(node).then(content => {
-    const doc = asciidoctor.load(content, { catalog_assets: true })
+    let doc = asciidoctor.load(content, { catalog_assets: true })
 
     const contentDigest = crypto
       .createHash(`md5`)
       .update(doc.reader.source_lines.join('\n'))
       .digest(`hex`)
 
-    function getAuthor(id) {
-      const idSuffix = _.isNumber(id) ? `_${id}` : ``
-      return {
-        name: doc.getAttribute(`author${idSuffix}`),
-        firstname: doc.getAttribute(`firstname${idSuffix}`),
-        lastname: doc.getAttribute(`lastname${idSuffix}`),
-        email: doc.getAttribute(`email${idSuffix}`),
-        initials: doc.getAttribute(`authorinitials${idSuffix}`),
-      }
-    }
+    const html = doc.convert()
 
-    const authorCount = _.defaultTo(doc.getAttribute('authorcount'), 0)
-
-    const tags = _.flowRight([
-      _.split(';'),
-      _.filter(_.negate(_.isEmpty)),
-      _.map(_.trim),
+    const tags = _.compose([
       _.defaultTo([]),
+      _.map(_.trim),
+      _.filter(_.negate(_.isEmpty)),
+      _.split(';'),
     ])(doc.getAttribute('tags'))
 
     const metadata = {
@@ -54,20 +44,27 @@ module.exports.onCreateNode = function(
       version: doc.getAttribute('revnumber') || '',
       remark: doc.getAttribute('revremark') || '',
       tags: tags,
-      authors: _.flatMap(
-        _.rangeStep(1, 0, authorCount),
-        i => (i === 0 ? getAuthor(null) : getAuthor(i + 1))
-      ),
+      authors: _.map(a => ({
+        name: a.getName(),
+        firstname: a.getFirstName(),
+        lastname: a.getLastName(),
+        email: a.getEmail(),
+        initials: a.getInitials(),
+      }))(doc.getAuthors()),
     }
 
-    const images = doc.getCatalog().images
+    const images = _.map(i => i.getTarget())(doc.getImages())
 
-    const html = doc.convert()
+    const links = doc.getLinks()
 
     const asciidocNode = {
       id: createNodeId(`${node.id} >>> Asciidoctor`),
       frontmatter: metadata,
-      images,
+      internalReferences: _.compose([
+        _.filter(_.negate(_.isNull)),
+        _.filter(_.negate(_.startsWith('/'))),
+        _.filter(isRelative),
+      ])(_.concat(images, links)),
       children: [],
       html,
       parent: node.id,
