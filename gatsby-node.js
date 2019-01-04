@@ -4,7 +4,7 @@ const path = require('path')
 const crypto = require(`crypto`)
 const isRelative = require('is-relative-url')
 const booleanBind = Boolean.bind
-const asciidoctor = require('asciidoctor.js')()
+let asciidoctor = require('asciidoctor.js')()
 Boolean.bind = booleanBind
 
 module.exports.onCreateNode = function(
@@ -17,8 +17,25 @@ module.exports.onCreateNode = function(
     return
   }
 
+  if (!_.isUndefined(pluginOptions.converterFactory)) {
+    asciidoctor.ConverterFactory.register(
+      new pluginOptions.converterFactory(asciidoctor),
+      ['html5']
+    )
+  }
+
+  let registry = asciidoctor.Extensions.create()
+  if (!_.isEmpty(pluginOptions.extensions)) {
+    _.reduce((reg, ext) => ext(reg), registry, pluginOptions.extensions)
+  }
+
   return loadNodeContent(node).then(content => {
-    let doc = asciidoctor.load(content, { catalog_assets: true })
+    let doc = asciidoctor.load(content, {
+      catalog_assets: true,
+      extension_registry: registry,
+    })
+
+    console.log(doc.getAttribute('nofootnotes'))
 
     const contentDigest = crypto
       .createHash(`md5`)
@@ -34,16 +51,15 @@ module.exports.onCreateNode = function(
       _.split(';'),
     ])(doc.getAttribute('tags'))
 
+    const info = doc.getRevisionInfo()
     const metadata = {
       title: doc.getAttribute('doctitle'),
       description: doc.getAttribute('description') || '',
-      date: _.defaultTo(
-        doc.getAttribute('revdate'),
-        doc.getAttribute('docdate')
-      ),
-      version: doc.getAttribute('revnumber') || '',
-      remark: doc.getAttribute('revremark') || '',
+      date: info.getDate(),
+      version: info.getNumber() || '1',
+      remark: info.getRemark() || '',
       tags: tags,
+      author: doc.getAuthor(),
       authors: _.map(a => ({
         name: a.getName(),
         firstname: a.getFirstName(),
@@ -60,12 +76,11 @@ module.exports.onCreateNode = function(
     const asciidocNode = {
       id: createNodeId(`${node.id} >>> Asciidoctor`),
       frontmatter: metadata,
-      internalReferences: _.compose([
+      children: _.compose([
         _.filter(_.negate(_.isNull)),
         _.filter(_.negate(_.startsWith('/'))),
         _.filter(isRelative),
       ])(_.concat(images, links)),
-      children: [],
       html,
       parent: node.id,
       internal: {
