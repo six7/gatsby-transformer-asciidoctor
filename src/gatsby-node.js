@@ -1,59 +1,59 @@
 /** @format */
-const _ = require('lodash/fp')
-const path = require('path')
-const crypto = require(`crypto`)
-const isRelative = require('is-relative-url')
-const booleanBind = Boolean.bind
-let asciidoctor = require('asciidoctor.js')()
-Boolean.bind = booleanBind
+const _ = require('lodash/fp');
+const path = require('path');
+const crypto = require(`crypto`);
+const isRelative = require('is-relative-url');
+const booleanBind = Boolean.bind;
+let asciidoctor = require('asciidoctor.js')();
+Boolean.bind = booleanBind;
 
 module.exports.onCreateNode = function(
-  { node, getNode, getNodes, loadNodeContent, actions, createNodeId },
-  pluginOptions
+  {node, getNode, getNodes, loadNodeContent, actions, createNodeId},
+  pluginOptions,
 ) {
-  const { createNode, createParentChildLink } = actions
+  const {createNode, createParentChildLink} = actions;
 
   if (node.extension !== `adoc`) {
-    return
+    return;
   }
 
   if (!_.isUndefined(pluginOptions.converterFactory)) {
     asciidoctor.ConverterFactory.register(
       new pluginOptions.converterFactory(asciidoctor),
-      ['html5']
-    )
+      ['html5'],
+    );
   }
 
-  let registry = asciidoctor.Extensions.create()
+  let registry = asciidoctor.Extensions.create();
   if (!_.isEmpty(pluginOptions.extensions)) {
-    _.reduce((reg, ext) => ext(reg), registry, pluginOptions.extensions)
+    _.reduce((reg, ext) => ext(reg), registry, pluginOptions.extensions);
   }
 
   return loadNodeContent(node).then(content => {
     let doc = asciidoctor.load(content, {
       catalog_assets: true,
       extension_registry: registry,
-    })
+    });
 
-    console.log(doc.getAttribute('nofootnotes'))
+    console.log(doc.getAttribute('nofootnotes'));
 
     const contentDigest = crypto
       .createHash(`md5`)
       .update(doc.reader.source_lines.join('\n'))
-      .digest(`hex`)
+      .digest(`hex`);
 
-    const html = doc.convert()
+    const html = doc.convert();
 
     const tags = _.compose([
       _.defaultTo([]),
       _.map(_.trim),
       _.filter(_.negate(_.isEmpty)),
       _.split(';'),
-    ])(doc.getAttribute('tags'))
+    ])(doc.getAttribute('tags'));
 
-    const info = doc.getRevisionInfo()
+    const info = doc.getRevisionInfo();
     const metadata = {
-      title: doc.getAttribute('doctitle'),
+      title: doc.getTitle(),
       description: doc.getAttribute('description') || '',
       date: info.getDate(),
       version: info.getNumber() || '1',
@@ -67,11 +67,11 @@ module.exports.onCreateNode = function(
         email: a.getEmail(),
         initials: a.getInitials(),
       }))(doc.getAuthors()),
-    }
+    };
 
-    const images = _.map(i => i.getTarget())(doc.getImages())
+    const images = _.map(i => i.getTarget())(doc.getImages());
 
-    const links = doc.getLinks()
+    const links = doc.getLinks();
 
     const asciidocNode = {
       id: createNodeId(`${node.id} >>> Asciidoctor`),
@@ -88,9 +88,9 @@ module.exports.onCreateNode = function(
         contentDigest,
         type: 'Asciidoctor',
       },
-    }
+    };
 
-    createNode(asciidocNode)
-    createParentChildLink({ parent: node, child: asciidocNode })
-  })
-}
+    createNode(asciidocNode);
+    createParentChildLink({parent: node, child: asciidocNode});
+  });
+};
