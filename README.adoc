@@ -2,4 +2,48 @@
 Julien Tanguy
 v0.1.0, 2019-01-07: Initial version 
 
+Parses asciidoc files using link:https://github.com/asciidoctor/asciidoctor.js[asciidoctor.js]
+
+== Install
+
+`npm install --save @jtanguy/gatsby-transformer-asciidoctor`
+
+== How to use
+
+
+[source,javascript]
+----
+// In your gatsby-config.js
+plugins: [
+  {
+    resolve: `@jtanguy/gatsby-transformer-asciidoctor`,
+  },
+],
+----
+
+
+== Parsing algorithm
+
+It recognizes only files with the `adoc` extensions as asciidoc.
+
+Each asciidoc file is parsed into a node of type `Asciidoctor`.
+
+The following standard attributes are stored in the document's frontmatter:
+
+* `title`
+* `date`
+* `version`
+* `remark`
+* `author`
+* `authors`: a list of authors, with the following fields:
+** `name`
+** `firstname`
+** `lastname`
+** `email`
+** `initials`
+
+The following non-standard attributes are stored in the document's frontmatter
+
+`description`:: The `description` attribute
+`tags`:: The `tags` attribute. The value is split into a list using `;` as a delimiter
 
