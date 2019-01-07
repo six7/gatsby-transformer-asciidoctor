@@ -1,13 +1,20 @@
 {
-  "name": "gatsby-transformer-asciidoctor",
-  "version": "0.0.4",
+  "name": "@jtanguy/gatsby-transformer-asciidoctor",
+  "version": "0.1.0",
   "description": "Asciidoctor transformer plugin for gatsby",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "babel src --out-dir . --ignore **/__tests__",
+    "prepare": "cross-env NODE_ENV=production npm run build",
+    "watch": "babel -w src --out-dir . --ignore **/__tests__"
   },
-  "author": "Julien Tanguy",
-  "license": "ISC",
+  "files": [
+    "README.adoc"
+  ],
+  "homepage": "https://github.com/jtanguy/gatsby-transformer-asciidoctor",
+  "repository": "https://github.com/jtanguy/gatsby-transformer-asciidoctor",
+  "author": "Julien Tanguy <julien.tanguy@jhome.fr>",
+  "license": "MIT",
   "dependencies": {
     "asciidoctor.js": "^1.5.9",
     "is-relative-url": "^2.0.0",
@@ -15,5 +22,11 @@
   },
   "peerDependencies": {
     "gatsby": "^2.0.0"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.2.3",
+    "@babel/core": "^7.2.2",
+    "babel-preset-gatsby-package": "^0.1.3",
+    "cross-env": "^5.2.0"
   }
 }
