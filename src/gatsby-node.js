@@ -1,96 +1,90 @@
-/** @format */
-const _ = require('lodash/fp');
-const path = require('path');
-const crypto = require(`crypto`);
-const isRelative = require('is-relative-url');
-const booleanBind = Boolean.bind;
-let asciidoctor = require('asciidoctor.js')();
-Boolean.bind = booleanBind;
+const asciidoc = require(`asciidoctor.js`)()
 
-module.exports.onCreateNode = function(
-  {node, getNode, getNodes, loadNodeContent, actions, createNodeId},
-  pluginOptions,
+async function onCreateNode(
+  {
+    node,
+    actions,
+    loadNodeContent,
+    createNodeId,
+    reporter,
+    createContentDigest,
+  },
+  pluginOptions
 ) {
-  const {createNode, createParentChildLink} = actions;
-
-  if (node.extension !== `adoc`) {
-    return;
+  // Filter out non-adoc content
+  if (!node.extension || node.extension !== `adoc`) {
+    return
   }
 
-  if (!_.isUndefined(pluginOptions.converterFactory)) {
-    asciidoctor.ConverterFactory.register(
-      new pluginOptions.converterFactory(asciidoctor),
-      ['html5'],
-    );
+  if (pluginOptions.converterFactory) {
+    asciidoc.ConverterFactory.register(new pluginOptions.converterFactory(asciidoc), ['html5']);
   }
 
-  let registry = asciidoctor.Extensions.create();
-  if (!_.isEmpty(pluginOptions.extensions)) {
-    _.reduce((reg, ext) => ext(reg), registry, pluginOptions.extensions);
-  }
+  const { createNode, createParentChildLink } = actions
+  // Load Asciidoc contents
+  const content = await loadNodeContent(node)
+  // Load Asciidoc file for extracting
+  // https://asciidoctor-docs.netlify.com/asciidoctor.js/processor/extract-api/
+  // We use a `let` here as a warning: some operations, like .convert() mutate the document
+  let doc = await asciidoc.load(content, pluginOptions)
 
-  return loadNodeContent(node).then(content => {
-    let doc = asciidoctor.load(content, {
-      catalog_assets: true,
-      extension_registry: registry,
-    });
+  try {
+    const html = doc.convert()
+    // Use "partition" option to be able to get title, subtitle, combined
+    const title = doc.getDocumentTitle({ partition: true })
 
-    console.log(doc.getAttribute('nofootnotes'));
+    let revision = null
+    let author = null
 
-    const contentDigest = crypto
-      .createHash(`md5`)
-      .update(doc.reader.source_lines.join('\n'))
-      .digest(`hex`);
+    if (doc.hasRevisionInfo()) {
+      revision = {
+        date: doc.getRevisionDate(),
+        number: doc.getRevisionNumber(),
+        remark: doc.getRevisionRemark(),
+      }
+    }
 
-    const html = doc.convert();
+    if (doc.getAuthor()) {
+      author = {
+        fullName: doc.getAttribute(`author`),
+        firstName: doc.getAttribute(`firstname`),
+        lastName: doc.getAttribute(`lastname`) || ``,
+        middleName: doc.getAttribute(`middlename`) || ``,
+        authorInitials: doc.getAttribute(`authorinitials`) || ``,
+        email: doc.getAttribute(`email`) || ``,
+      }
+    }
 
-    const tags = _.compose([
-      _.defaultTo([]),
-      _.map(_.trim),
-      _.filter(_.negate(_.isEmpty)),
-      _.split(';'),
-    ])(doc.getAttribute('tags'));
-
-    const info = doc.getRevisionInfo();
-    const metadata = {
-      title: doc.getTitle(),
-      description: doc.getAttribute('description') || '',
-      date: info.getDate(),
-      version: info.getNumber() || '1',
-      remark: info.getRemark() || '',
-      tags: tags,
-      author: doc.getAuthor(),
-      authors: _.map(a => ({
-        name: a.getName(),
-        firstname: a.getFirstName(),
-        lastname: a.getLastName(),
-        email: a.getEmail(),
-        initials: a.getInitials(),
-      }))(doc.getAuthors()),
-    };
-
-    const images = _.map(i => i.getTarget())(doc.getImages());
-
-    const links = doc.getLinks();
-
-    const asciidocNode = {
-      id: createNodeId(`${node.id} >>> Asciidoctor`),
-      frontmatter: metadata,
-      children: _.compose([
-        _.filter(_.negate(_.isNull)),
-        _.filter(_.negate(_.startsWith('/'))),
-        _.filter(isRelative),
-      ])(_.concat(images, links)),
-      html,
+    const asciiNode = {
+      id: createNodeId(`${node.id} >>> ASCIIDOC`),
       parent: node.id,
       internal: {
-        content,
-        contentDigest,
-        type: 'Asciidoctor',
+        type: `Asciidoc`,
+        mediaType: `text/html`,
       },
-    };
+      children: [],
+      html,
+      document: {
+        title: title.getCombined(),
+        subtitle: title.hasSubtitle() ? title.getSubtitle() : ``,
+        main: title.getMain(),
+      },
+      revision,
+      author,
+    }
 
-    createNode(asciidocNode);
-    createParentChildLink({parent: node, child: asciidocNode});
-  });
-};
+    asciiNode.internal.contentDigest = createContentDigest(asciiNode)
+
+    createNode(asciiNode)
+    createParentChildLink({ parent: node, child: asciiNode })
+  } catch (err) {
+    reporter.panicOnBuild(
+      `Error processing Asciidoc ${
+        node.absolutePath ? `file ${node.absolutePath}` : `in node ${node.id}`
+      }:\n
+      ${err.message}`
+    )
+  }
+}
+
+exports.onCreateNode = onCreateNode
